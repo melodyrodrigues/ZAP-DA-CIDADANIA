@@ -274,19 +274,35 @@ export async function fetchBillDetails(id: string): Promise<BillDetailsData> {
   try {
     // Busca detalhes da proposição
     const detailsRes = await fetch(`${BASE_URL}/proposicoes/${id}`);
+    
+    if (!detailsRes.ok) {
+      throw new Error(`HTTP error! status: ${detailsRes.status}`);
+    }
+    
     const details = await detailsRes.json();
-    const detailData = details.dados;
+    const detailData = details?.dados;
+
+    if (!detailData) {
+      throw new Error("Dados da proposição não encontrados");
+    }
 
     // Busca tramitações
-    const tramitacoesRes = await fetch(`${BASE_URL}/proposicoes/${id}/tramitacoes?ordem=DESC&ordenarPor=dataHora`);
-    const tramitacoesData = await tramitacoesRes.json();
-    const tramitacoes: Tramitacao[] = (tramitacoesData.dados || []).map((t: any) => ({
-      dataHora: t.dataHora,
-      sequencia: t.sequencia,
-      siglaOrgao: t.siglaOrgao,
-      descricaoTramitacao: t.descricaoTramitacao,
-      despacho: t.despacho || ""
-    }));
+    let tramitacoes: Tramitacao[] = [];
+    try {
+      const tramitacoesRes = await fetch(`${BASE_URL}/proposicoes/${id}/tramitacoes?ordem=DESC&ordenarPor=dataHora`);
+      if (tramitacoesRes.ok) {
+        const tramitacoesData = await tramitacoesRes.json();
+        tramitacoes = (tramitacoesData?.dados || []).map((t: any) => ({
+          dataHora: t.dataHora || "",
+          sequencia: t.sequencia || 0,
+          siglaOrgao: t.siglaOrgao || "",
+          descricaoTramitacao: t.descricaoTramitacao || "",
+          despacho: t.despacho || ""
+        }));
+      }
+    } catch (e) {
+      console.log("Tramitações não disponíveis");
+    }
 
     // Busca votações e votos
     let votesYes = 0;
@@ -295,32 +311,42 @@ export async function fetchBillDetails(id: string): Promise<BillDetailsData> {
 
     try {
       const votacoesRes = await fetch(`${BASE_URL}/proposicoes/${id}/votacoes`);
-      const votacoes = await votacoesRes.json();
+      if (votacoesRes.ok) {
+        const votacoes = await votacoesRes.json();
 
-      if (votacoes.dados && votacoes.dados.length > 0) {
-        // Busca votos de todas as votações
-        for (const votacao of votacoes.dados.slice(0, 3)) {
-          const votosRes = await fetch(`${BASE_URL}/votacoes/${votacao.id}/votos`);
-          const votos = await votosRes.json();
+        if (votacoes?.dados && votacoes.dados.length > 0) {
+          // Busca votos de todas as votações
+          for (const votacao of votacoes.dados.slice(0, 3)) {
+            try {
+              const votosRes = await fetch(`${BASE_URL}/votacoes/${votacao.id}/votos`);
+              if (votosRes.ok) {
+                const votos = await votosRes.json();
 
-          if (votos.dados) {
-            votesYes += votos.dados.filter((v: any) => v.tipoVoto === "Sim").length;
-            votesNo += votos.dados.filter((v: any) => v.tipoVoto === "Não").length;
+                if (votos?.dados) {
+                  votesYes += votos.dados.filter((v: any) => v.tipoVoto === "Sim").length;
+                  votesNo += votos.dados.filter((v: any) => v.tipoVoto === "Não").length;
 
-            // Adiciona representantes (evita duplicados)
-            const newReps = votos.dados.map((v: any) => ({
-              id: v.deputado_.id.toString(),
-              name: v.deputado_.nome,
-              party: v.deputado_.siglaPartido,
-              state: v.deputado_.siglaUf,
-              vote: v.tipoVoto === "Sim" ? "yes" : v.tipoVoto === "Não" ? "no" : "abstained",
-              photo: v.deputado_.urlFoto
-            }));
+                  // Adiciona representantes (evita duplicados)
+                  const newReps = votos.dados
+                    .filter((v: any) => v.deputado_)
+                    .map((v: any) => ({
+                      id: v.deputado_.id?.toString() || "",
+                      name: v.deputado_.nome || "Desconhecido",
+                      party: v.deputado_.siglaPartido || "-",
+                      state: v.deputado_.siglaUf || "-",
+                      vote: v.tipoVoto === "Sim" ? "yes" : v.tipoVoto === "Não" ? "no" : "abstained",
+                      photo: v.deputado_.urlFoto || ""
+                    }));
 
-            representatives = [
-              ...representatives,
-              ...newReps.filter((r: Representative) => !representatives.find(rep => rep.id === r.id))
-            ];
+                  representatives = [
+                    ...representatives,
+                    ...newReps.filter((r: Representative) => !representatives.find(rep => rep.id === r.id))
+                  ];
+                }
+              }
+            } catch (e) {
+              // Ignora erro de votos individuais
+            }
           }
         }
       }
@@ -328,15 +354,15 @@ export async function fetchBillDetails(id: string): Promise<BillDetailsData> {
       console.log("Votações não disponíveis");
     }
 
-    const title = `${detailData.siglaTipo} ${detailData.numero}/${detailData.ano}`;
-    const category = categorizeByKeywords(detailData.ementa, detailData.keywords || "");
+    const title = `${detailData.siglaTipo || "PL"} ${detailData.numero || ""}/${detailData.ano || ""}`;
+    const category = categorizeByKeywords(detailData.ementa || "", detailData.keywords || "");
     const status = getStatus(detailData.statusProposicao?.descricaoSituacao || "");
 
     return {
       id,
       title,
-      originalText: detailData.ementa,
-      simplifiedDescription: simplifyEmenta(detailData.ementa),
+      originalText: detailData.ementa || "Texto não disponível",
+      simplifiedDescription: simplifyEmenta(detailData.ementa || ""),
       category,
       status,
       votesYes,
