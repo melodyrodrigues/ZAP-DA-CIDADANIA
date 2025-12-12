@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Header } from "@/components/Header";
 import { LevelProgress } from "@/components/LevelProgress";
@@ -20,6 +21,7 @@ const Index = () => {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const { data: bills = [], isLoading, isError, refetch } = useBills(15);
 
@@ -86,10 +88,7 @@ const Index = () => {
   };
 
   const handleViewDetails = (billId: string) => {
-    toast({
-      title: "Em breve!",
-      description: "Página de detalhes será adicionada em breve.",
-    });
+    navigate(`/projeto/${billId}`);
   };
 
   const handleQuizComplete = (correct: boolean) => {
