@@ -2,6 +2,28 @@ import { Bill, Representative } from "@/types/bill";
 
 const BASE_URL = "https://dadosabertos.camara.leg.br/api/v2";
 
+export interface Tramitacao {
+  dataHora: string;
+  sequencia: number;
+  siglaOrgao: string;
+  descricaoTramitacao: string;
+  despacho: string;
+}
+
+export interface BillDetailsData {
+  id: string;
+  title: string;
+  originalText: string;
+  simplifiedDescription: string;
+  category: string;
+  status: string;
+  votesYes: number;
+  votesNo: number;
+  representatives: Representative[];
+  tramitacoes: Tramitacao[];
+  urlInteiroTeor: string;
+}
+
 interface ProposicaoResponse {
   dados: Proposicao[];
   links: { rel: string; href: string }[];
@@ -243,6 +265,90 @@ export async function fetchProposicoes(limit: number = 10): Promise<Bill[]> {
     return bills.filter((bill): bill is Bill => bill !== null);
   } catch (error) {
     console.error("Error fetching proposições:", error);
+    throw error;
+  }
+}
+
+// Busca detalhes completos de um projeto de lei
+export async function fetchBillDetails(id: string): Promise<BillDetailsData> {
+  try {
+    // Busca detalhes da proposição
+    const detailsRes = await fetch(`${BASE_URL}/proposicoes/${id}`);
+    const details = await detailsRes.json();
+    const detailData = details.dados;
+
+    // Busca tramitações
+    const tramitacoesRes = await fetch(`${BASE_URL}/proposicoes/${id}/tramitacoes?ordem=DESC&ordenarPor=dataHora`);
+    const tramitacoesData = await tramitacoesRes.json();
+    const tramitacoes: Tramitacao[] = (tramitacoesData.dados || []).map((t: any) => ({
+      dataHora: t.dataHora,
+      sequencia: t.sequencia,
+      siglaOrgao: t.siglaOrgao,
+      descricaoTramitacao: t.descricaoTramitacao,
+      despacho: t.despacho || ""
+    }));
+
+    // Busca votações e votos
+    let votesYes = 0;
+    let votesNo = 0;
+    let representatives: Representative[] = [];
+
+    try {
+      const votacoesRes = await fetch(`${BASE_URL}/proposicoes/${id}/votacoes`);
+      const votacoes = await votacoesRes.json();
+
+      if (votacoes.dados && votacoes.dados.length > 0) {
+        // Busca votos de todas as votações
+        for (const votacao of votacoes.dados.slice(0, 3)) {
+          const votosRes = await fetch(`${BASE_URL}/votacoes/${votacao.id}/votos`);
+          const votos = await votosRes.json();
+
+          if (votos.dados) {
+            votesYes += votos.dados.filter((v: any) => v.tipoVoto === "Sim").length;
+            votesNo += votos.dados.filter((v: any) => v.tipoVoto === "Não").length;
+
+            // Adiciona representantes (evita duplicados)
+            const newReps = votos.dados.map((v: any) => ({
+              id: v.deputado_.id.toString(),
+              name: v.deputado_.nome,
+              party: v.deputado_.siglaPartido,
+              state: v.deputado_.siglaUf,
+              vote: v.tipoVoto === "Sim" ? "yes" : v.tipoVoto === "Não" ? "no" : "abstained",
+              photo: v.deputado_.urlFoto
+            }));
+
+            representatives = [
+              ...representatives,
+              ...newReps.filter((r: Representative) => !representatives.find(rep => rep.id === r.id))
+            ];
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Votações não disponíveis");
+    }
+
+    const title = `${detailData.siglaTipo} ${detailData.numero}/${detailData.ano}`;
+    const category = categorizeByKeywords(detailData.ementa, detailData.keywords || "");
+    const status = getStatus(detailData.statusProposicao?.descricaoSituacao || "");
+
+    return {
+      id,
+      title,
+      originalText: detailData.ementa,
+      simplifiedDescription: simplifyEmenta(detailData.ementa),
+      category,
+      status,
+      votesYes,
+      votesNo,
+      representatives: representatives.length > 0 ? representatives : [
+        { id: "placeholder", name: "Aguardando votação", party: "-", state: "-", vote: "abstained" as const }
+      ],
+      tramitacoes,
+      urlInteiroTeor: detailData.urlInteiroTeor || ""
+    };
+  } catch (error) {
+    console.error("Error fetching bill details:", error);
     throw error;
   }
 }
