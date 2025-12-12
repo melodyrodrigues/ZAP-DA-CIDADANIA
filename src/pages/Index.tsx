@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Header } from "@/components/Header";
 import { LevelProgress } from "@/components/LevelProgress";
 import { BillCard } from "@/components/BillCard";
 import { QuizSection } from "@/components/QuizSection";
+import { BillFilters } from "@/components/BillFilters";
 import { useBills } from "@/hooks/useBills";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -16,9 +17,32 @@ const Index = () => {
   const [currentXP, setCurrentXP] = useState(0);
   const requiredXP = level * 200;
   const [selectedBill, setSelectedBill] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState("all");
   const { toast } = useToast();
   
-  const { data: bills = [], isLoading, isError, refetch } = useBills(9);
+  const { data: bills = [], isLoading, isError, refetch } = useBills(15);
+
+  // Extract unique categories and statuses from bills
+  const { categories, statuses } = useMemo(() => {
+    const cats = [...new Set(bills.map(b => b.category))];
+    const stats = [...new Set(bills.map(b => b.status))];
+    return { categories: cats, statuses: stats };
+  }, [bills]);
+
+  // Filter bills based on selected filters
+  const filteredBills = useMemo(() => {
+    return bills.filter(bill => {
+      const matchesCategory = selectedCategory === "all" || bill.category === selectedCategory;
+      const matchesStatus = selectedStatus === "all" || bill.status === selectedStatus;
+      return matchesCategory && matchesStatus;
+    });
+  }, [bills, selectedCategory, selectedStatus]);
+
+  const clearFilters = () => {
+    setSelectedCategory("all");
+    setSelectedStatus("all");
+  };
 
   const handleVote = (billId: string, vote: 'yes' | 'no') => {
     const bill = bills.find(b => b.id === billId);
@@ -143,7 +167,7 @@ const Index = () => {
 
         {/* Bills Grid */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h3 className="text-2xl font-bold" style={{ fontFamily: 'Poppins' }}>
               Projetos em Votação
             </h3>
@@ -157,6 +181,17 @@ const Index = () => {
               Atualizar
             </Button>
           </div>
+
+          {/* Filters */}
+          <BillFilters
+            selectedCategory={selectedCategory}
+            selectedStatus={selectedStatus}
+            onCategoryChange={setSelectedCategory}
+            onStatusChange={setSelectedStatus}
+            onClearFilters={clearFilters}
+            categories={categories}
+            statuses={statuses}
+          />
           
           {isLoading && (
             <div className="flex items-center justify-center py-12">
@@ -170,14 +205,23 @@ const Index = () => {
               <p>Erro ao carregar proposições. Usando dados de demonstração.</p>
             </div>
           )}
+
+          {!isLoading && filteredBills.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>Nenhum projeto encontrado com os filtros selecionados.</p>
+              <Button variant="link" onClick={clearFilters} className="mt-2">
+                Limpar filtros
+              </Button>
+            </div>
+          )}
           
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {bills.map((bill, index) => (
+            {filteredBills.map((bill, index) => (
               <motion.div
                 key={bill.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
+                transition={{ delay: index * 0.05 }}
               >
                 <BillCard
                   bill={bill}
