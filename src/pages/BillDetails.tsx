@@ -5,22 +5,42 @@ import { ArrowLeft, ExternalLink, Loader2, ThumbsUp, ThumbsDown, Minus, Calendar
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { fetchBillDetails, BillDetailsData } from "@/lib/api/camara";
+import { mockBills } from "@/data/mockBills";
 
 const BillDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const { data: bill, isLoading, error } = useQuery<BillDetailsData>({
+  // Verifica se é um mock bill (IDs simples como "1", "2", "3")
+  const mockBill = mockBills.find(b => b.id === id);
+
+  const { data: apiBill, isLoading, error } = useQuery<BillDetailsData>({
     queryKey: ["billDetails", id],
     queryFn: () => fetchBillDetails(id!),
-    enabled: !!id,
+    enabled: !!id && !mockBill, // Só busca da API se não for mock
   });
 
-  if (isLoading) {
+  // Usa mock bill se disponível, senão usa dados da API
+  const bill: BillDetailsData | undefined = mockBill 
+    ? {
+        id: mockBill.id,
+        title: mockBill.title,
+        originalText: mockBill.originalText,
+        simplifiedDescription: mockBill.simplifiedDescription,
+        category: mockBill.category,
+        status: mockBill.status,
+        votesYes: mockBill.votesYes,
+        votesNo: mockBill.votesNo,
+        representatives: mockBill.representatives,
+        tramitacoes: [],
+        urlInteiroTeor: ""
+      }
+    : apiBill;
+
+  if (isLoading && !mockBill) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -28,7 +48,7 @@ const BillDetails = () => {
     );
   }
 
-  if (error || !bill) {
+  if ((error && !mockBill) || !bill) {
     return (
       <div className="min-h-screen bg-background p-6">
         <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4">
