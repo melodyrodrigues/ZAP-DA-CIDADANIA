@@ -4,9 +4,10 @@ import { Header } from "@/components/Header";
 import { LevelProgress } from "@/components/LevelProgress";
 import { BillCard } from "@/components/BillCard";
 import { QuizSection } from "@/components/QuizSection";
-import { mockBills } from "@/data/mockBills";
+import { useBills } from "@/hooks/useBills";
 import { useToast } from "@/hooks/use-toast";
-import { Share2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import heroImage from "@/assets/hero-civic.jpg";
 
 const Index = () => {
@@ -16,9 +17,11 @@ const Index = () => {
   const requiredXP = level * 200;
   const [selectedBill, setSelectedBill] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  const { data: bills = [], isLoading, isError, refetch } = useBills(9);
 
   const handleVote = (billId: string, vote: 'yes' | 'no') => {
-    const bill = mockBills.find(b => b.id === billId);
+    const bill = bills.find(b => b.id === billId);
     if (!bill) return;
 
     const earnedPoints = bill.points;
@@ -45,7 +48,7 @@ const Index = () => {
   };
 
   const handleShare = (billId: string) => {
-    const bill = mockBills.find(b => b.id === billId);
+    const bill = bills.find(b => b.id === billId);
     if (!bill) return;
 
     const message = `🗳️ Acabei de votar no projeto "${bill.title}"!\n\nEntenda em linguagem simples: ${bill.simplifiedDescription}\n\nParticipe você também! 👇`;
@@ -112,7 +115,7 @@ const Index = () => {
             <div className="flex gap-4 pt-4">
               <div className="bg-white/20 backdrop-blur rounded-lg px-6 py-3">
                 <p className="text-sm opacity-90">Projetos Ativos</p>
-                <p className="text-2xl font-bold">{mockBills.length}</p>
+                <p className="text-2xl font-bold">{bills.length}</p>
               </div>
               <div className="bg-white/20 backdrop-blur rounded-lg px-6 py-3">
                 <p className="text-sm opacity-90">Seus Pontos</p>
@@ -132,7 +135,7 @@ const Index = () => {
             animate={{ opacity: 1, scale: 1 }}
           >
             <QuizSection 
-              quiz={mockBills.find(b => b.id === selectedBill)!.quiz}
+              quiz={bills.find(b => b.id === selectedBill)!.quiz}
               onComplete={handleQuizComplete}
             />
           </motion.div>
@@ -144,13 +147,32 @@ const Index = () => {
             <h3 className="text-2xl font-bold" style={{ fontFamily: 'Poppins' }}>
               Projetos em Votação
             </h3>
-            <span className="text-sm text-muted-foreground" style={{ fontFamily: 'Inter' }}>
-              Vote e ganhe pontos!
-            </span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => refetch()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
           </div>
           
+          {isLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <span className="ml-3 text-muted-foreground">Carregando proposições da Câmara...</span>
+            </div>
+          )}
+          
+          {isError && (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>Erro ao carregar proposições. Usando dados de demonstração.</p>
+            </div>
+          )}
+          
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {mockBills.map((bill, index) => (
+            {bills.map((bill, index) => (
               <motion.div
                 key={bill.id}
                 initial={{ opacity: 0, y: 20 }}
